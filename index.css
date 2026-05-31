@@ -274,6 +274,104 @@ main {
   color: #333;
 }
 
+.primary-btn {
+  padding: 0.5rem 1.25rem;
+  border: none;
+  border-radius: 8px;
+  background: #4a6cf7;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.primary-btn:hover {
+  background: #3a5ce5;
+}
+
+.recorder-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+#saved-dice-section {
+  margin-top: 2rem;
+}
+
+#saved-dice-section h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin-bottom: 0.75rem;
+}
+
+.saved-die-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.7rem 1rem;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  margin-bottom: 0.5rem;
+  gap: 0.75rem;
+}
+
+.saved-die-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.saved-die-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #333;
+}
+
+.saved-die-meta {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.saved-die-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.saved-die-actions .load-die-btn,
+.saved-die-actions .delete-die-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  background: white;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.saved-die-actions .load-die-btn {
+  color: #4a6cf7;
+  border-color: #4a6cf7;
+}
+
+.saved-die-actions .load-die-btn:hover {
+  background: #f0f4ff;
+}
+
+.saved-die-actions .delete-die-btn {
+  color: #dc2626;
+  border-color: #dc2626;
+}
+
+.saved-die-actions .delete-die-btn:hover {
+  background: #fef2f2;
+}
+
 #results {
   margin-top: 2rem;
   animation: fadeIn 0.4s ease;

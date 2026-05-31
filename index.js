@@ -1,7 +1,136 @@
+const DICE_STORAGE_KEY = 'fairDieDice';
+
 let chart = null;
 let parsedData = null;
 let rollCounts = null;
 let mode = 'record';
+
+
+function getDiceList() {
+  try {
+    const raw = localStorage.getItem(DICE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+
+function saveDiceList(list) {
+  try { localStorage.setItem(DICE_STORAGE_KEY, JSON.stringify(list)); } catch (e) { /* storage full */ }
+}
+
+function autoSaveDie() {
+  if (!rollCounts) return;
+  const numSides = parseInt(document.getElementById('die-select').value);
+  const total = rollCounts.reduce((a, b) => a + b, 0);
+  if (total === 0) return;
+
+  const entries = getDiceList();
+  const idx = entries.findIndex(e => e.sides === numSides && e.id.startsWith('auto_'));
+
+  const entry = {
+    id: `auto_${numSides}`,
+    name: `D${numSides}`,
+    sides: numSides,
+    counts: [...rollCounts],
+    total,
+    savedAt: Date.now()
+  };
+
+  if (idx >= 0) entries[idx] = entry;
+  else entries.push(entry);
+
+  saveDiceList(entries);
+}
+
+function saveDie(name) {
+  if (!rollCounts) return;
+  const numSides = parseInt(document.getElementById('die-select').value);
+  const total = rollCounts.reduce((a, b) => a + b, 0);
+  if (total === 0) return;
+
+  let entries = getDiceList();
+  // Remove auto-saved entry for this die so it doesn't linger as a duplicate
+  entries = entries.filter(e => !(e.sides === numSides && e.id.startsWith('auto_')));
+
+  const safeName = name || `D${numSides}`;
+  const existing = entries.findIndex(e => e.name === safeName && e.sides === numSides);
+
+  const entry = {
+    id: existing >= 0 ? entries[existing].id : `saved_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: safeName,
+    sides: numSides,
+    counts: [...rollCounts],
+    total,
+    savedAt: Date.now()
+  };
+
+  if (existing >= 0) entries[existing] = entry;
+  else entries.push(entry);
+
+  saveDiceList(entries);
+  renderSavedDiceList();
+}
+
+function deleteDie(id) {
+  saveDiceList(getDiceList().filter(e => e.id !== id));
+  renderSavedDiceList();
+}
+
+function loadDie(id) {
+  const entry = getDiceList().find(e => e.id === id);
+  if (!entry) return;
+
+  document.getElementById('die-select').value = entry.sides.toString();
+  rollCounts = [...entry.counts];
+  mode = 'record';
+  setMode('record');
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function renderSavedDiceList() {
+  const section = document.getElementById('saved-dice-section');
+  const container = document.getElementById('saved-dice-list');
+  if (!section || !container) return;
+  const entries = getDiceList();
+
+  if (entries.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  const shown = entries.filter(e => !e.id.startsWith('auto_'));
+  if (shown.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  container.innerHTML = shown
+    .sort((a, b) => b.savedAt - a.savedAt)
+    .map(e => {
+      const d = new Date(e.savedAt);
+      return `
+        <div class="saved-die-entry">
+          <div class="saved-die-info">
+            <span class="saved-die-name">${escapeHtml(e.name)}</span>
+            <span class="saved-die-meta">D${e.sides} &middot; ${e.total} rolls &middot; ${d.toLocaleDateString()} ${d.toLocaleTimeString()}</span>
+          </div>
+          <div class="saved-die-actions">
+            <button class="load-die-btn" data-id="${e.id}">Load</button>
+            <button class="delete-die-btn" data-id="${e.id}">Delete</button>
+          </div>
+        </div>`;
+    }).join('');
+
+  container.querySelectorAll('.load-die-btn').forEach(b =>
+    b.addEventListener('click', () => loadDie(b.dataset.id)));
+  container.querySelectorAll('.delete-die-btn').forEach(b =>
+    b.addEventListener('click', () => deleteDie(b.dataset.id)));
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const dropZone = document.getElementById('drop-zone');
@@ -10,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const downloadLink = document.getElementById('download-example');
   const modeBtns = document.querySelectorAll('.mode-btn');
   const clearBtn = document.getElementById('clear-rolls');
+  const saveBtn = document.getElementById('save-rolls');
 
   dropZone.addEventListener('click', () => fileInput.click());
 
@@ -56,7 +186,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   clearBtn.addEventListener('click', clearRecordedRolls);
 
+  saveBtn.addEventListener('click', () => {
+    const numSides = parseInt(document.getElementById('die-select').value);
+    const recent = getDiceList()
+      .filter(e => e.sides === numSides && !e.id.startsWith('auto_'))
+      .sort((a, b) => b.savedAt - a.savedAt)[0];
+    const defaultName = recent ? recent.name : `D${numSides}`;
+    const name = prompt('Name this die (e.g. "D6 session 1"):', defaultName);
+    if (name) saveDie(name.trim());
+  });
+
   setMode('record');
+
+  const entries = getDiceList();
+  if (entries.length > 0) {
+    const latest = entries.sort((a, b) => b.savedAt - a.savedAt)[0];
+    dieSelect.value = latest.sides.toString();
+    rollCounts = latest.counts;
+    generateDiceButtons();
+    updateDieBadges();
+    processRecordedData();
+  }
+
+  renderSavedDiceList();
 });
 
 function setMode(newMode) {
@@ -104,6 +256,7 @@ function recordRoll(face) {
   }
 
   rollCounts[face - 1]++;
+  autoSaveDie();
   updateDieBadges();
   processRecordedData();
 }
@@ -162,6 +315,9 @@ function getTarget(numSides) {
 }
 
 function clearRecordedRolls() {
+  const numSides = parseInt(document.getElementById('die-select').value);
+  saveDiceList(getDiceList().filter(e => !(e.sides === numSides && e.id.startsWith('auto_'))));
+  renderSavedDiceList();
   rollCounts = null;
   document.getElementById('results').classList.add('hidden');
   document.querySelectorAll('.die-btn .count-badge').forEach(b => b.remove());
@@ -218,8 +374,8 @@ function parseJSON(text) {
     }
 
     const entries = Object.entries(data)
-      .filter(([k, v]) => !isNaN(parseInt(k)) && typeof v === 'number')
-      .map(([k, v]) => ({ face: parseInt(k), count: Math.round(v) }))
+      .filter(([k, v]) => !isNaN(parseInt(k, 10)) && typeof v === 'number')
+      .map(([k, v]) => ({ face: parseInt(k, 10), count: Math.round(v) }))
       .filter(e => e.count >= 0)
       .sort((a, b) => a.face - b.face);
 
@@ -253,7 +409,7 @@ function parseTabular(text) {
   const singleLine = lines.length - startLine === 1;
   if (singleLine) {
     const values = lines[startLine].split(',').map(v => {
-      const n = parseInt(v.trim());
+      const n = parseInt(v.trim(), 10);
       if (isNaN(n)) throw new Error('Non-numeric value found: ' + v.trim());
       return n;
     });
@@ -268,8 +424,8 @@ function parseTabular(text) {
     for (let i = startLine; i < lines.length; i++) {
       const p = lines[i].split(',').map(v => v.trim());
       if (p.length >= 2) {
-        const face = parseInt(p[0]);
-        const count = parseInt(p[1]);
+        const face = parseInt(p[0], 10);
+        const count = parseInt(p[1], 10);
         if (!isNaN(face) && !isNaN(count)) {
           pairs.push({ face, count: Math.max(0, count) });
         }
@@ -286,7 +442,7 @@ function parseTabular(text) {
 
   const values = [];
   for (let i = startLine; i < lines.length; i++) {
-    const n = parseInt(lines[i]);
+    const n = parseInt(lines[i], 10);
     if (!isNaN(n)) values.push(n);
   }
 
@@ -332,10 +488,8 @@ function processAndDisplay() {
 
     if (values.length === numSides && values.every(v => v >= 1 && v <= numSides)) {
       const sum = values.reduce((a, b) => a + b, 0);
-      if (sum > numSides * numSides) {
-        tallied.length = 0;
-        tallied.push(...values);
-        counts = tallied;
+      if (sum >= numSides * numSides) {
+        counts = [...values];
         total = sum;
         detectionNote = 'Auto-detected as aggregated counts per face';
       } else {
@@ -355,10 +509,10 @@ function processAndDisplay() {
   const stats = chiSquaredTest(counts, numSides);
   stats.total = total;
 
+  document.getElementById('results').classList.remove('hidden');
   displayResults(stats, counts, numSides, detectionNote);
   renderChart(counts, stats.expected, numSides);
   renderRanking(counts, numSides);
-  document.getElementById('results').classList.remove('hidden');
 }
 
 function chiSquaredTest(observed, numSides) {
