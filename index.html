@@ -86,6 +86,26 @@
         </div>
       </div>
     </div>
+
+    <div id="nerd-stats" class="hidden">
+      <div class="nerd-toggle-wrap">
+        <button id="nerd-toggle" class="nerd-toggle-btn">Stats for nerds</button>
+      </div>
+      <div id="nerd-panel" class="hidden">
+        <div class="nerd-summary">
+          <div class="nerd-cramers">
+            <h3>Cramér's V</h3>
+            <span id="cramers-v" class="nerd-value"></span>
+          </div>
+          <div class="nerd-cramers">
+            <h3>Monte Carlo p</h3>
+            <span id="nerd-monte-carlo" class="nerd-value"></span>
+          </div>
+        </div>
+        <h3 class="nerd-breakdown-title">Per-face breakdown</h3>
+        <div id="nerd-per-face"></div>
+      </div>
+    </div>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

@@ -133,6 +133,17 @@ function renderSavedDiceList() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  if (typeof Chart !== 'undefined' && Chart.register) {
+    Chart.register({
+      id: 'nerdErrorBars',
+      afterDraw: function(ch) {
+        if (ch._nerdErrorData) {
+          drawErrorBars(ch, ch._nerdErrorData.observed, ch._nerdErrorData.total);
+        }
+      }
+    });
+  }
+
   const dropZone = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-input');
   const dieSelect = document.getElementById('die-select');
@@ -209,6 +220,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   renderSavedDiceList();
+
+  document.getElementById('nerd-toggle').addEventListener('click', () => {
+    const btn = document.getElementById('nerd-toggle');
+    const panel = document.getElementById('nerd-panel');
+    btn.classList.toggle('active');
+    panel.classList.toggle('hidden');
+    
+    if (chart) {
+      const ciDataset = chart.data.datasets.find(ds => ds.label === '95% Confidence');
+      if (ciDataset) {
+        ciDataset.hidden = !btn.classList.contains('active');
+      }
+      chart.update();
+    }
+  });
 });
 
 function setMode(newMode) {
@@ -219,6 +245,9 @@ function setMode(newMode) {
   document.getElementById('upload-section').classList.toggle('hidden', mode !== 'upload');
   document.getElementById('recorder-section').classList.toggle('hidden', mode !== 'record');
   document.getElementById('results').classList.add('hidden');
+  document.getElementById('nerd-stats').classList.add('hidden');
+  document.getElementById('nerd-toggle').classList.remove('active');
+  document.getElementById('nerd-panel').classList.add('hidden');
 
   if (mode === 'record') {
     generateDiceButtons();
@@ -320,6 +349,9 @@ function clearRecordedRolls() {
   renderSavedDiceList();
   rollCounts = null;
   document.getElementById('results').classList.add('hidden');
+  document.getElementById('nerd-stats').classList.add('hidden');
+  document.getElementById('nerd-toggle').classList.remove('active');
+  document.getElementById('nerd-panel').classList.add('hidden');
   document.querySelectorAll('.die-btn .count-badge').forEach(b => b.remove());
   document.querySelectorAll('.die-btn').forEach(b => b.classList.remove('has-rolls'));
   updateTallyDisplay(0);
@@ -513,6 +545,7 @@ function processAndDisplay() {
   displayResults(stats, counts, numSides, detectionNote);
   renderChart(counts, stats.expected, numSides);
   renderRanking(counts, numSides);
+  renderNerdStats(counts, numSides, total, stats.chiSq);
 }
 
 function chiSquaredTest(observed, numSides) {
@@ -626,6 +659,17 @@ function renderChart(observed, expected, numSides) {
 
   const labels = Array.from({ length: numSides }, (_, i) => (i + 1).toString());
 
+  const total = observed.reduce((a, b) => a + b, 0);
+
+  // Calculate the maximum upper confidence interval to ensure the Y-axis has space for the error bars
+  let maxUpper = 0;
+  for (let i = 0; i < numSides; i++) {
+    const upper = wilsonCI(observed[i], total).upper * total;
+    if (upper > maxUpper) maxUpper = upper;
+  }
+  // Ensure the max Y-axis value accommodates the tallest error bar with a little padding
+  const suggestedMax = Math.ceil(maxUpper * 1.05);
+
   chart = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -647,6 +691,15 @@ function renderChart(observed, expected, numSides) {
           borderWidth: 1,
           borderRadius: 3,
           borderDash: [4, 3]
+        },
+        {
+          label: '95% Confidence',
+          type: 'line',
+          data: [], // Empty data so it only shows in the legend
+          borderColor: 'rgba(30, 30, 30, 0.8)',
+          backgroundColor: 'rgba(30, 30, 30, 0.8)',
+          borderWidth: 1.5,
+          hidden: !document.getElementById('nerd-toggle').classList.contains('active')
         }
       ]
     },
@@ -659,7 +712,14 @@ function renderChart(observed, expected, numSides) {
           labels: {
             boxWidth: 14,
             padding: 16,
-            font: { size: 12 }
+            font: { size: 12 },
+            filter: function(item, chart) {
+              // Completely hide the confidence interval legend item when disabled
+              if (item.text === '95% Confidence') {
+                return !item.hidden;
+              }
+              return true;
+            }
           }
         },
         tooltip: {
@@ -679,16 +739,20 @@ function renderChart(observed, expected, numSides) {
         },
         y: {
           beginAtZero: true,
+          suggestedMax: suggestedMax,
           title: {
             display: true,
             text: 'Frequency',
             font: { size: 12 }
           },
-          grid: { color: 'rgba(0,0,0,0.06)' }
+          grid: { color: 'rgba(0,0,0,0.06)' },
+          clip: false // Prevents error bars from getting cut off at the edges
         }
       }
     }
   });
+
+  chart._nerdErrorData = { observed, total };
 }
 
 function renderRanking(observed, numSides) {
@@ -715,6 +779,167 @@ function renderRanking(observed, numSides) {
         <span class="rank-count">${f.count}</span>
       </div>`;
   }).join('');
+}
+
+function normalCDF(x) {
+  if (x < 0) return 1 - normalCDF(-x);
+  return 0.5 + 0.5 * regularizedLowerGammaP(0.5, x * x / 2);
+}
+
+function wilsonCI(count, total, z) {
+  z = z || 1.96;
+  const p = count / total;
+  const denom = 1 + z * z / total;
+  const center = (p + z * z / (2 * total)) / denom;
+  const margin = z * Math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denom;
+  return { proportion: p, lower: Math.max(0, center - margin), upper: Math.min(1, center + margin) };
+}
+
+function cramersV(chiSq, total, numSides) {
+  if (total === 0 || numSides <= 1) return 0;
+  return Math.sqrt(chiSq / (total * (numSides - 1)));
+}
+
+function betaCI(count, total) {
+  const alpha = 1 + count;
+  const beta = 1 + (total - count);
+  const mean = alpha / (alpha + beta);
+  const variance = alpha * beta / ((alpha + beta) ** 2 * (alpha + beta + 1));
+  const sd = Math.sqrt(variance);
+  return {
+    lower: Math.max(0, (mean - 1.96 * sd) * 100),
+    upper: Math.min(100, (mean + 1.96 * sd) * 100)
+  };
+}
+
+function monteCarloP(observed, numSides, obsChiSq) {
+  const total = observed.reduce((a, b) => a + b, 0);
+  if (total === 0 || numSides <= 1) return null;
+  const expected = total / numSides;
+  const iterations = Math.min(5000, Math.max(1000, Math.round(200000 / total)));
+  let extremes = 0;
+  const sim = new Array(numSides);
+
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let i = 0; i < numSides; i++) sim[i] = 0;
+    for (let i = 0; i < total; i++) {
+      sim[Math.floor(Math.random() * numSides)]++;
+    }
+    let chiSq = 0;
+    for (let i = 0; i < numSides; i++) {
+      const diff = sim[i] - expected;
+      chiSq += (diff * diff) / expected;
+    }
+    if (chiSq >= obsChiSq) extremes++;
+  }
+
+  return (extremes + 1) / (iterations + 1);
+}
+
+function drawErrorBars(ch, observed, total) {
+  if (!document.getElementById('nerd-toggle').classList.contains('active')) return;
+  if (!ch || !ch.ctx || !ch.scales || !ch.scales.y) return;
+  const meta = ch.getDatasetMeta(0);
+  if (!meta || !meta.data || meta.hidden) return;
+
+  const ctx = ch.ctx;
+  const yScale = ch.scales.y;
+
+  ctx.save();
+  // Using a darker, more distinct color so it doesn't look like a grey chart bar
+  ctx.strokeStyle = 'rgba(30, 30, 30, 0.8)';
+  ctx.lineWidth = 1.5;
+
+  for (let i = 0; i < Math.min(observed.length, meta.data.length); i++) {
+    const ci = wilsonCI(observed[i], total);
+    // Offset the x position slightly to the right so it doesn't cover the data bar directly
+    const barWidth = meta.data[i].width || 20;
+    const x = meta.data[i].x + (barWidth * 0.25);
+    const yTop = yScale.getPixelForValue(Math.round(ci.upper * total));
+    const yBottom = yScale.getPixelForValue(Math.round(ci.lower * total));
+
+    // Draw the vertical line
+    ctx.beginPath();
+    ctx.moveTo(x, yBottom);
+    ctx.lineTo(x, yTop);
+    ctx.stroke();
+
+    // Draw upper whisker (made wider so it looks clearly like an error bar)
+    ctx.beginPath();
+    ctx.moveTo(x - 4, yTop);
+    ctx.lineTo(x + 4, yTop);
+    ctx.stroke();
+
+    // Draw lower whisker
+    ctx.beginPath();
+    ctx.moveTo(x - 4, yBottom);
+    ctx.lineTo(x + 4, yBottom);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function renderNerdStats(observed, numSides, total, chiSq) {
+  const section = document.getElementById('nerd-stats');
+  const panel = document.getElementById('nerd-panel');
+
+  document.getElementById('cramers-v').textContent = cramersV(chiSq, total, numSides).toFixed(4);
+
+  const mcP = monteCarloP(observed, numSides, chiSq);
+  document.getElementById('nerd-monte-carlo').textContent = mcP !== null ? formatPValue(mcP) : '\u2014';
+
+  const expected = total / numSides;
+  const p0 = 1 / numSides;
+  const z = 1.96;
+
+  const rows = observed.map((count, i) => {
+    const face = i + 1;
+    const ci = wilsonCI(count, total, z);
+    const bci = betaCI(count, total);
+    const se = Math.sqrt(total * p0 * (1 - p0));
+    let zBinom = 0;
+    if (se > 0) {
+      zBinom = (Math.abs(count - expected) - 0.5) / se;
+    }
+    const binomP = 2 * (1 - normalCDF(Math.max(0, zBinom)));
+    const sig = binomP < 0.05;
+
+    return {
+      face,
+      count,
+      proportion: (count / total * 100).toFixed(1),
+      ciLower: (ci.lower * 100).toFixed(1),
+      ciUpper: (ci.upper * 100).toFixed(1),
+      bayesLower: bci.lower.toFixed(1),
+      bayesUpper: bci.upper.toFixed(1),
+      binomP,
+      sig
+    };
+  });
+
+  const tbody = rows.map(r => `
+    <tr>
+      <td>${r.face}</td>
+      <td>${r.count}</td>
+      <td>${r.proportion}%</td>
+      <td>${r.ciLower}\u2013${r.ciUpper}%</td>
+      <td>${r.bayesLower}\u2013${r.bayesUpper}%</td>
+      <td class="${r.sig ? 'nerd-sig' : 'nerd-not-sig'}">${formatPValue(r.binomP)}${r.sig ? ' *' : ''}</td>
+    </tr>`).join('');
+
+  document.getElementById('nerd-per-face').innerHTML = `
+    <table class="nerd-table">
+      <thead><tr>
+        <th>Face</th><th>Count</th><th>Proportion</th><th>95% CI</th><th>Bayesian 95% CI</th><th>Binomial p</th>
+      </tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>`;
+
+  section.classList.remove('hidden');
+  if (!document.getElementById('nerd-toggle').classList.contains('active')) {
+    panel.classList.add('hidden');
+  }
 }
 
 function downloadExample() {
