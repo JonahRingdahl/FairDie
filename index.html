@@ -1,15 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title></title>
-  <link href="css/style.css" rel="stylesheet">
+  <title>FairDie</title>
+  <link href="index.css" rel="stylesheet">
 </head>
-
 <body>
+  <header>
+    <h1>FairDie</h1>
+    <p class="subtitle">Is your die fair?</p>
+  </header>
 
+  <main>
+    <div class="mode-toggle">
+      <button class="mode-btn" data-mode="upload">Upload file</button>
+      <button class="mode-btn active" data-mode="record">Record rolls</button>
+    </div>
+
+    <div class="controls">
+      <label for="die-select">Die type:</label>
+      <select id="die-select">
+        <option value="4">D4</option>
+        <option value="6" selected>D6</option>
+        <option value="8">D8</option>
+        <option value="10">D10</option>
+        <option value="12">D12</option>
+        <option value="20">D20</option>
+      </select>
+    </div>
+
+    <div id="upload-section">
+      <div id="drop-zone">
+        <p class="drop-text">Drop a roll file here</p>
+        <p class="drop-sub">CSV, JSON, or plain text — raw rolls or aggregated counts</p>
+        <p class="drop-or">or click to browse</p>
+        <input type="file" id="file-input" accept=".csv,.json,.txt">
+      </div>
+      <p class="example-link">
+        <a href="#" id="download-example">Download example roll file</a>
+      </p>
+    </div>
+
+    <div id="recorder-section" class="hidden">
+      <div id="dice-grid"></div>
+      <div class="recorder-footer">
+        <div class="tally-info">
+          <span id="roll-count">0 rolls</span>
+          <span id="roll-target"></span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <button id="clear-rolls" class="secondary-btn">Clear all rolls</button>
+      </div>
+    </div>
+
+    <div id="results" class="hidden">
+      <div class="results-grid">
+        <div class="left-col">
+          <div class="stats-table">
+            <h2>Test Results</h2>
+            <div class="stat-row"><span class="stat-label">Chi-squared (&chi;&sup2;)</span><span class="stat-value" id="chi-squared"></span></div>
+            <div class="stat-row"><span class="stat-label">Degrees of freedom</span><span class="stat-value" id="df"></span></div>
+            <div class="stat-row"><span class="stat-label">p-value</span><span class="stat-value" id="p-value"></span></div>
+            <div class="stat-row"><span class="stat-label">Total rolls</span><span class="stat-value" id="total-rolls"></span></div>
+            <div class="stat-row verdict-row"><span class="stat-label">Verdict</span><span class="stat-value" id="verdict"></span></div>
+            <p class="note" id="warning-note"></p>
+          </div>
+          <div class="chart-container">
+            <canvas id="chart"></canvas>
+          </div>
+        </div>
+        <div class="face-ranking">
+          <h2>Face Ranking</h2>
+          <div id="ranking-list"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="index.js"></script>
 </body>
-
 </html>
