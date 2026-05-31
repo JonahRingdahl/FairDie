@@ -14,7 +14,7 @@ function getDiceList() {
 }
 
 function saveDiceList(list) {
-  try { localStorage.setItem(DICE_STORAGE_KEY, JSON.stringify(list)); } catch (e) { /* storage full */ }
+  try { localStorage.setItem(DICE_STORAGE_KEY, JSON.stringify(list)); } catch (e) { alert('Storage is full. Delete some saved dice to make room.'); }
 }
 
 function autoSaveDie() {
